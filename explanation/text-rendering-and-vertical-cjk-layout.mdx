@@ -1,0 +1,142 @@
+---
+title: "Text Rendering and Vertical CJK Layout"
+description: "How Koharu renders translated text in speech bubbles using OpenType shaping, vertical CJK layout, RTL support, and manga-oriented stroke compositing."
+---
+
+Text rendering is one of the hardest parts of a manga translator. Detection, OCR, and inpainting determine what should happen to the page, but the renderer determines whether the result reads like a finished manga page or a debug overlay. Koharu's renderer is not a general desktop publishing engine — it is deliberately tuned for the layout patterns manga pages need most, with particular depth in vertical CJK bubble text.
+
+## Why text rendering is hard for manga
+
+A text renderer needs to run through several dependent stages:
+
+1. Choose writing mode and primary font
+2. Break text into line segments
+3. Shape each segment (apply OpenType features, produce glyph runs)
+4. Compute baselines and ink bounds
+5. Rasterize outlines or bitmaps
+6. Composite the result back onto the page
+
+In practice these stages are not independent. You cannot know final line breaks until you know shaped advances. You cannot shape reliably without knowing the writing direction and which OpenType features apply. You cannot pick one font for all manga text because pages mix scripts, symbols, and emoji. You cannot assume a bubble's bounding box matches the renderer's true ink bounds.
+
+Vertical manga text adds another layer of difficulty:
+
+- Columns flow top-to-bottom; columns themselves flow right-to-left
+- Punctuation often needs vertical alternates or recentering
+- Some fonts have proper vertical forms; many do not
+- Mixed Japanese, Chinese, Latin, numbers, and emoji regularly appear in the same block
+
+## What Koharu actually does
+
+The renderer lives in the `koharu-renderer` crate. Main orchestration is in `koharu-app/src/renderer.rs`, with layout, shaping, segmentation, and rasterization split across `src/layout.rs`, `src/shape.rs`, `src/segment.rs`, and `src/renderer.rs`.
+
+For each translated `TextBlock`, the pipeline is:
+
+1. Normalize text for layout
+2. Choose writing mode based on script and block geometry
+3. Choose primary and fallback fonts (including Google Fonts if configured)
+4. Find line-break segments with ICU4X
+5. Shape each segment with HarfBuzz
+6. Apply vertical punctuation fixes
+7. Compute baselines and tight ink bounds
+8. Rasterize outlines or bitmaps with tiny-skia
+9. Composite the block back onto the page
+
+The concrete components are:
+
+- `LineBreaker` — ICU4X line segmentation (`icu` crate)
+- `TextShaper` — HarfBuzz through `harfrust`
+- `TextLayout` — converts shaped runs into lines or vertical columns
+- `TinySkiaRenderer` — rasterizes outlines with `skrifa`, falls back to `fontdue` bitmaps
+
+## How Koharu chooses vertical layout
+
+Koharu does not force all CJK text into vertical mode. The heuristic in `text/script.rs` is:
+
+- If the translation contains CJK text **and** the block is taller than it is wide → use `VerticalRl`
+- Otherwise → keep the block horizontal
+
+Vertical layout therefore depends on both script detection and the geometry of the detected or user-adjusted text box. This is intentionally simple: it matches a large share of manga bubble text without converting every mixed-script caption to vertical just because it contains one Japanese character.
+
+<Note>
+  Vertical mode is a heuristic, not a general writing-mode engine. Mixed-script captions, sideways notes, and unusual SFX blocks may still need manual correction.
+</Note>
+
+## How vertical CJK is implemented
+
+<AccordionGroup>
+  <Accordion title="Writing mode becomes a real shaping direction">
+    `WritingMode::VerticalRl` is not a canvas rotation applied after the fact. Koharu converts it into a top-to-bottom shaping direction before HarfBuzz runs, so the font and shaping engine can produce vertical advances and vertical glyph forms. This is the main architectural decision behind vertical CJK output in Koharu.
+  </Accordion>
+
+  <Accordion title="Vertical OpenType features are enabled">
+    When shaping vertical text, Koharu enables the OpenType features `vert` and `vrt2` — the standard vertical alternate substitutions exposed by fonts that properly support vertical writing. If the font contains these glyph substitutions, Koharu uses them. If it does not, the result degrades to whatever the font provides.
+  </Accordion>
+
+  <Accordion title="Lines become columns">
+    In vertical mode, the layout logic flips the main extent:
+
+    - `max_height` limits a column (not the line width)
+    - Per-column advance is read from `y_advance`
+    - Each new line becomes a new column, stepping leftward by the line height
+    - Glyphs advance downward within a column; the first column starts on the right
+
+    This is the standard `vertical-rl` flow used in traditional Japanese manga bubbles.
+  </Accordion>
+
+  <Accordion title="Fullwidth punctuation is recentered">
+    Vertical CJK layout breaks quickly if punctuation is left with naive horizontal centering. Koharu explicitly recenters fullwidth punctuation from actual font bounds in vertical mode. This covers ideographic commas and full stops, fullwidth punctuation blocks, brackets and corner marks, and middle dots.
+
+    This is not cosmetic — it is one of the primary reasons the vertical path looks intentional rather than produced by a generic renderer.
+  </Accordion>
+
+  <Accordion title="Emphasis punctuation is normalized">
+    The layout code normalizes emphasis-mark pairs for vertical text. Repeated or paired `!` and `?` marks can be collapsed into the corresponding combined Unicode forms before shaping, preserving the vertical look readers expect from manga punctuation rather than stacking awkward horizontal marks in a narrow column.
+  </Accordion>
+
+  <Accordion title="Ink bounds are measured tightly">
+    After layout, Koharu computes a tight ink bounding box from per-glyph metrics and translates baselines so the true ink origin starts at `(0, 0)`. This prevents clipping: font metrics alone are not enough because vertical punctuation and alternate glyph forms can have surprising extents, and outline and bitmap glyphs must land reliably in the same surface.
+  </Accordion>
+</AccordionGroup>
+
+## Font selection and Google Fonts
+
+The renderer supports font fallback across multiple faces. When the primary font is missing a symbol, emoji, or script, Koharu falls back to the next available font automatically.
+
+Koharu includes built-in Google Fonts support. Fonts from the bundled catalog are fetched on demand, cached under the application data directory, and reused for later renders. Once cached, a Google Font behaves like any other local render font — no internet connection is needed for subsequent renders on the same machine.
+
+<Tip>
+  The font chosen for rendering is informed by the `YuzuMarker.FontDetection` model output from the Detect stage, which estimates the source font family and style. You can override this in the text block editor.
+</Tip>
+
+## Why Koharu does not just rotate text
+
+The cheapest approach for vertical text is to lay it out horizontally and rotate the result. Koharu avoids this because the failure modes are obvious:
+
+- Punctuation sits in the wrong position
+- Glyph advances are wrong for the vertical direction
+- Column flow looks fake
+- Fonts cannot apply their vertical alternates (`vert`, `vrt2`)
+- Bounds and clipping become harder to reason about
+
+Koharu pushes vertical handling back into shaping and layout, which is why the output looks deliberate rather than merely "rotated."
+
+## Current limits
+
+| Area | Current behavior | Limit |
+|------|-----------------|-------|
+| Writing mode selection | Heuristic based on script + block geometry | Edge cases need manual adjustment |
+| CJK line breaking | ICU4X default segmentation | No manga-specific kinsoku implementation yet |
+| Font vertical forms | Depends on the chosen font | Cannot produce vertical alternates a font does not contain |
+| Advanced layout features | Not implemented | No ruby annotation, warichu, or per-run mixed ligature styling |
+| Translation length | Renderer fits and aligns | Cannot fix a bad block geometry or an overly verbose translation |
+
+## Further reading
+
+<CardGroup cols={2}>
+  <Card title="Technical deep dive" icon="code" href="/explanation/technical-deep-dive">
+    Source tree layout, rendering crate structure, and how the pipeline stages connect.
+  </Card>
+  <Card title="How Koharu's pipeline works" icon="diagram-project" href="/explanation/how-koharu-works">
+    Where the renderer fits in the full translation pipeline.
+  </Card>
+</CardGroup>

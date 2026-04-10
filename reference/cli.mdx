@@ -1,0 +1,115 @@
+---
+title: "Koharu CLI Reference"
+description: "Command-line options for the Koharu binary: --headless, --port, --cpu, --download, --no-keyring, and --debug. Includes usage examples and behavior notes."
+---
+
+Koharu uses a single binary for all modes: desktop startup, headless local Web UI, the local HTTP API, and the built-in MCP server. The flags below control which mode runs and how the runtime is configured at startup.
+
+## Usage
+
+<Tabs>
+  <Tab title="macOS / Linux">
+    ```bash
+    koharu [OPTIONS]
+    ```
+  </Tab>
+  <Tab title="Windows">
+    ```bash
+    koharu.exe [OPTIONS]
+    ```
+  </Tab>
+</Tabs>
+
+## Flags
+
+<ParamField path="--download" type="flag">
+  Short form: `-d`
+
+  Prefetch runtime libraries and the default vision and OCR stack, then exit. Koharu does not stay running after the download completes. Useful for pre-seeding a machine before the first use.
+</ParamField>
+
+<ParamField path="--cpu" type="flag">
+  Force CPU mode even when a GPU is available. Both the vision stack and the local LLM path avoid GPU acceleration when this flag is set.
+</ParamField>
+
+<ParamField path="--port" type="number">
+  Short form: `-p`
+
+  Bind the local HTTP server to a specific `127.0.0.1` port instead of a random one. When a fixed port is set, the main local endpoints are:
+
+  - `http://localhost:<PORT>/`
+  - `http://localhost:<PORT>/api/v1`
+  - `http://localhost:<PORT>/mcp`
+
+  Without `--port`, Koharu chooses a random local port on each startup.
+</ParamField>
+
+<ParamField path="--headless" type="flag">
+  Run without starting the desktop GUI. Koharu skips the Tauri window but still serves the Web UI and the HTTP API. Use this when you want browser-based access or need to run on a machine without a display.
+</ParamField>
+
+<ParamField path="--no-keyring" type="flag">
+  Run without keyring access. Koharu skips all keyring operations and reads API keys from environment variables instead. When this flag is set, provider API keys must be supplied via environment variables before launch.
+</ParamField>
+
+<ParamField path="--debug" type="flag">
+  Enable debug-oriented console output. Use this when diagnosing pipeline issues, logging verbosity, or engine behavior.
+</ParamField>
+
+## Behavior notes
+
+- Without `--port`, the port changes on every restart. Fix the port when you need a stable MCP or API endpoint.
+- With `--headless`, the desktop window is never opened. The Web UI and HTTP API remain fully functional.
+- With `--download`, Koharu exits after dependency prefetch and does not serve any endpoints.
+- With `--cpu`, the runtime never attempts GPU acceleration for vision models or local LLM inference.
+- With `--no-keyring`, all keyring reads are skipped. Any previously saved API keys in the keyring are ignored.
+
+## Common patterns
+
+Start a headless Web UI on a stable port:
+
+```bash
+koharu --port 4000 --headless
+```
+
+Start with CPU-only inference:
+
+```bash
+koharu --cpu
+```
+
+Prefetch runtime packages before first use:
+
+```bash
+koharu --download
+```
+
+Run a local MCP endpoint on a stable port, then connect your MCP client to `http://localhost:9999/mcp`:
+
+```bash
+koharu --port 9999
+```
+
+Start with explicit debug logging:
+
+```bash
+koharu --debug
+```
+
+Use without keyring, supplying an API key via environment variable:
+
+<CodeGroup>
+
+```bash macOS / Linux
+KOHARU_OPENAI_API_KEY=[key] koharu --no-keyring
+```
+
+```bash Windows (PowerShell)
+$env:KOHARU_OPENAI_API_KEY="[key]"; koharu.exe --no-keyring
+```
+
+</CodeGroup>
+
+<Note>
+  The `--no-keyring` flag only affects how Koharu reads and writes API keys. It does not disable any other runtime features.
+</Note>

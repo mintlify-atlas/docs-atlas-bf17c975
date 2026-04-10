@@ -1,0 +1,103 @@
+{
+  "projectType": "saas",
+  "projectName": "Koharu",
+  "projectDescription": "A local-first, ML-powered manga translator built in Rust with OCR, inpainting, LLM translation, GPU acceleration, and MCP automation.",
+  "theme": "almond",
+  "primaryColor": "#ea5379",
+  "lightColor": "#f88a9c",
+  "darkColor": "#141414",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "tutorials/translate-your-first-page",
+              "how-to/install-koharu"
+            ]
+          },
+          {
+            "group": "How-To Guides",
+            "pages": [
+              "how-to/run-gui-headless-and-mcp",
+              "how-to/export-and-manage-projects",
+              "how-to/configure-mcp-clients",
+              "how-to/use-openai-compatible-api",
+              "how-to/build-from-source",
+              "how-to/troubleshooting",
+              "how-to/contributing"
+            ]
+          },
+          {
+            "group": "Concepts",
+            "pages": [
+              "explanation/how-koharu-works",
+              "explanation/models-and-providers",
+              "explanation/acceleration-and-runtime",
+              "explanation/text-rendering-and-vertical-cjk-layout",
+              "explanation/technical-deep-dive"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Reference",
+        "groups": [
+          {
+            "group": "Reference",
+            "pages": [
+              "reference/cli",
+              "reference/settings",
+              "reference/keyboard-shortcuts",
+              "reference/http-api",
+              "reference/mcp-tools"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Automatic text detection using object detection and segmentation models",
+    "OCR for manga dialogue, captions, and vertical Japanese text",
+    "ML-based inpainting to remove source lettering before rendering",
+    "Local and remote LLM translation backends (llama.cpp, OpenAI, Gemini, Claude, DeepSeek)",
+    "Advanced text rendering with vertical CJK and RTL layout support",
+    "Layered PSD export with editable translated text",
+    "Built-in MCP server and local HTTP API for automation and agent integration",
+    "Headless mode for scriptable batch translation without a desktop window",
+    "GPU acceleration via CUDA, Metal, Vulkan, and ZLUDA",
+    "Google Fonts integration for translated text rendering"
+  ],
+  "publicApiSurface": [
+    "GET /api/v1/meta",
+    "GET /api/v1/documents",
+    "POST /api/v1/documents/import",
+    "POST /api/v1/documents/{documentId}/detect",
+    "POST /api/v1/documents/{documentId}/ocr",
+    "POST /api/v1/documents/{documentId}/inpaint",
+    "POST /api/v1/documents/{documentId}/translate",
+    "POST /api/v1/documents/{documentId}/render",
+    "GET /api/v1/documents/{documentId}/export",
+    "GET /api/v1/llm/catalog",
+    "PUT /api/v1/llm",
+    "POST /api/v1/jobs/pipeline",
+    "GET /api/v1/events",
+    "MCP tool: process",
+    "MCP tool: detect",
+    "MCP tool: ocr",
+    "MCP tool: inpaint",
+    "MCP tool: render",
+    "MCP tool: llm_load",
+    "MCP tool: llm_generate",
+    "MCP tool: open_documents",
+    "MCP tool: export_document",
+    "CLI flag: --headless",
+    "CLI flag: --port",
+    "CLI flag: --cpu",
+    "CLI flag: --download"
+  ]
+}

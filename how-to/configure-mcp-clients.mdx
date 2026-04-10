@@ -1,0 +1,210 @@
+---
+title: "Configure MCP Clients to Connect to Koharu"
+description: "Connect Claude Desktop, Cursor, and other MCP clients to Koharu's built-in MCP server. Includes config snippets and connection troubleshooting tips."
+---
+
+Koharu exposes a built-in MCP server over local Streamable HTTP. This page shows how to connect MCP clients to it, with concrete setup for Antigravity, Claude Desktop, and Claude Code. The MCP server is the same local runtime used by the desktop app and headless Web UI, so an MCP client can drive the same manga workflow as Koharu's GUI.
+
+## What Koharu exposes over MCP
+
+Koharu's MCP tools cover:
+
+- document loading and inspection
+- image previews for original, segment, inpainted, and rendered layers
+- detect, OCR, inpaint, render, and full pipeline processing
+- LLM model listing, loading, unloading, and translation
+- text-block editing and export
+
+## Step 1: Start Koharu on a stable port
+
+Use a fixed port so your MCP client always has the same URL. You can run headless or keep the desktop window open — either way, the MCP endpoint is the same.
+
+<Tabs>
+  <Tab title="macOS / Linux (headless)">
+    ```bash
+    koharu --port 9999 --headless
+    ```
+  </Tab>
+  <Tab title="Windows (headless)">
+    ```bash
+    koharu.exe --port 9999 --headless
+    ```
+  </Tab>
+  <Tab title="macOS / Linux (with desktop)">
+    ```bash
+    koharu --port 9999
+    ```
+  </Tab>
+  <Tab title="Windows (with desktop)">
+    ```bash
+    koharu.exe --port 9999
+    ```
+  </Tab>
+</Tabs>
+
+Koharu's MCP endpoint will then be:
+
+```text
+http://127.0.0.1:9999/mcp
+```
+
+<Note>
+  Keep Koharu running while the MCP client is connected. Koharu binds to `127.0.0.1` by default, so these examples assume the MCP client is on the same machine. No authentication headers are required for the default local setup.
+</Note>
+
+## Step 2: Verify the endpoint
+
+Before editing any client config, make sure Koharu is actually running on the expected port. Open `http://127.0.0.1:9999/` in your browser. If the Web UI loads, the local server is up and the MCP endpoint should also exist at `/mcp`.
+
+## Configure Antigravity
+
+Antigravity can point directly at Koharu's local MCP URL through its raw MCP config.
+
+<Steps>
+  <Step title="Start Koharu">
+    Start Koharu with `--port 9999`.
+  </Step>
+  <Step title="Open Antigravity">
+    Open the `...` menu at the top of the editor's agent panel.
+  </Step>
+  <Step title="Open MCP settings">
+    Click **Manage MCP Servers**, then click **View raw config**.
+  </Step>
+  <Step title="Add the Koharu entry">
+    Add a `koharu` entry under `mcpServers` and save the config.
+  </Step>
+  <Step title="Restart Antigravity">
+    Restart Antigravity if it does not reload the MCP server automatically.
+  </Step>
+</Steps>
+
+```json
+{
+  "mcpServers": {
+    "koharu": {
+      "serverUrl": "http://127.0.0.1:9999/mcp"
+    }
+  }
+}
+```
+
+<Note>
+  If you already have other MCP servers configured, add `koharu` alongside them instead of replacing the whole `mcpServers` object.
+</Note>
+
+## Configure Claude Desktop
+
+Claude Desktop's current local MCP config is command-based. Because Koharu exposes a local HTTP MCP endpoint, the practical approach is to use a small bridge process (`mcp-remote`) that connects Claude Desktop to `http://127.0.0.1:9999/mcp`.
+
+Make sure `npx` is available on your machine before proceeding.
+
+<Steps>
+  <Step title="Start Koharu">
+    Start Koharu with `--port 9999`.
+  </Step>
+  <Step title="Open Claude Desktop settings">
+    Open **Settings**, then the **Developer** section.
+  </Step>
+  <Step title="Open the MCP config file">
+    Open the MCP config file from Claude Desktop's built-in editor entry.
+  </Step>
+  <Step title="Add the Koharu server entry">
+    Add a `koharu` server entry using the config below and save the file.
+  </Step>
+  <Step title="Restart Claude Desktop">
+    Fully restart Claude Desktop for the change to take effect.
+  </Step>
+</Steps>
+
+<CodeGroup>
+
+```json macOS / Linux
+{
+  "mcpServers": {
+    "koharu": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote@latest",
+        "http://127.0.0.1:9999/mcp"
+      ],
+      "env": {}
+    }
+  }
+}
+```
+
+```json Windows
+{
+  "mcpServers": {
+    "koharu": {
+      "command": "C:\\Progra~1\\nodejs\\npx.cmd",
+      "args": [
+        "-y",
+        "mcp-remote@latest",
+        "http://127.0.0.1:9999/mcp"
+      ],
+      "env": {}
+    }
+  }
+}
+```
+
+</CodeGroup>
+
+<Note>
+  `mcp-remote@latest` is fetched on first use, so the first startup may need internet access. If your Windows Node install is not under `C:\Program Files\nodejs`, update the `command` path accordingly.
+</Note>
+
+## Configure Claude Code
+
+For Claude Code, use the same stdio bridge pattern via the CLI:
+
+<Tabs>
+  <Tab title="macOS / Linux">
+    ```bash
+    claude mcp add-json koharu "{\"type\":\"stdio\",\"command\":\"npx\",\"args\":[\"-y\",\"mcp-remote@latest\",\"http://127.0.0.1:9999/mcp\"],\"env\":{}}" --scope user
+    ```
+  </Tab>
+  <Tab title="Windows">
+    ```bash
+    claude mcp add-json koharu "{\"type\":\"stdio\",\"command\":\"cmd\",\"args\":[\"/c\",\"npx\",\"-y\",\"mcp-remote@latest\",\"http://127.0.0.1:9999/mcp\"],\"env\":{}}" --scope user
+    ```
+  </Tab>
+</Tabs>
+
+Verify the configuration:
+
+```bash
+claude mcp get koharu
+claude mcp list
+```
+
+If you already configured Koharu in Claude Desktop, Claude Code can also import compatible entries from Claude Desktop on supported platforms:
+
+```bash
+claude mcp add-from-claude-desktop --scope user
+```
+
+## First tasks to try
+
+Once the client is connected, these are good first tasks:
+
+- ask Koharu for the loaded document count
+- open one page image from disk
+- run detect and OCR only first
+- inspect the segment or rendered layer before running a full export
+
+This makes failures easier to diagnose than jumping straight into a full batch pipeline.
+
+## Common mistakes
+
+<Warning>
+  Avoid these common configuration errors:
+  - Starting Koharu without `--port`, then trying to connect a client to the wrong port
+  - Using `http://127.0.0.1:9999/` instead of `http://127.0.0.1:9999/mcp`
+  - Closing Koharu after adding the client config
+  - Replacing your entire client config instead of merging a new `koharu` entry
+  - Expecting Claude Desktop to connect directly to Koharu's HTTP URL through a plain command-less config entry
+  - Forgetting that Koharu's default local server is only reachable from the same machine
+</Warning>

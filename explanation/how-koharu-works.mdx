@@ -1,0 +1,106 @@
+---
+title: "How Koharu's Translation Pipeline Works"
+description: "Understand Koharu's staged ML pipeline: detect, OCR, inpaint, translate, and render. Each stage produces distinct output consumed by the next."
+---
+
+Koharu translates manga pages through a five-stage ML pipeline. Each stage is deliberately separate: it produces well-defined output, uses a different class of model, and fails in ways that do not corrupt the other stages. The editor presents this as a simple linear workflow, but understanding the pipeline helps you configure it well and diagnose unexpected results.
+
+## Pipeline stages at a glance
+
+At the public level, Koharu runs these five stages in order:
+
+1. **Detect** — find text blocks, bubble regions, segmentation mask, and font hints
+2. **OCR** — recognize source text from cropped text regions
+3. **Inpaint** — remove source lettering using the segmentation mask
+4. **LLM Generate** — translate recognized text via local or remote LLM
+5. **Render** — composite translated text back onto the cleaned page
+
+| Stage | Default models | Output |
+|-------|---------------|--------|
+| Detect | `comic-text-bubble-detector`, `comic-text-detector-seg`, `YuzuMarker.FontDetection` | text blocks, bubble regions, segmentation mask, font hints |
+| OCR | `PaddleOCR-VL-1.5` | recognized source text per block |
+| Inpaint | `aot-inpainting` | page with original text pixels removed |
+| LLM Generate | local GGUF model or remote provider | translated text |
+| Render | Koharu renderer | localized page image or PSD export |
+
+## Why Detect is three models, not one
+
+The Detect stage is listed as a single step, but it runs three distinct models in one pass:
+
+- **`comic-text-bubble-detector`** finds text blocks and speech bubble regions in a single object-detection pass, producing the `TextBlock` and `BubbleRegion` records that drive OCR and the editor.
+- **`comic-text-detector-seg`** produces a per-pixel text probability map. Koharu thresholds and dilates this into the cleanup mask stored as `doc.segment`.
+- **`YuzuMarker.FontDetection`** estimates the font family, stroke color, and style hints that the renderer uses when placing translated text.
+
+That split exists because page-level region detection and pixel-level text foreground segmentation need different output shapes. A bounding box is good for routing a crop to OCR; it is a poor guide for inpainting, where exact pixel boundaries matter.
+
+<Note>
+  Text blocks are sorted into manga reading order after detection, before OCR runs.
+</Note>
+
+## Why stages are separate
+
+Manga pages are significantly harder than ordinary document OCR:
+
+- Speech bubbles are irregular and often curved, not rectangular
+- Japanese text may be vertical while captions or SFX are horizontal
+- Text overlaps artwork, screentones, speed lines, and panel borders
+- Reading order is structural, not just a scan of the raw pixels
+
+Because of this, a single model is not sufficient. Koharu separates detection, segmentation, OCR, inpainting, and translation so each task can use the model architecture best suited to it. Each stage can also fail independently, be swapped, or be re-run without affecting the others.
+
+## How each stage connects
+
+```
+Input page
+  └─► comic-text-bubble-detector ──► TextBlock + BubbleRegion records
+  └─► comic-text-detector-seg ──────► doc.segment (cleanup mask)
+  └─► YuzuMarker.FontDetection ─────► font + color hints
+
+TextBlock records ──► PaddleOCR-VL-1.5 ──► recognized text per block
+doc.segment ─────────► aot-inpainting ───► cleaned page (text removed)
+recognized text ─────► LLM ─────────────► translated text
+cleaned page + translated text + font hints ──► Renderer ──► final page / PSD
+```
+
+Inpainting consumes `doc.segment` — the per-pixel mask — not a bounding box. A bad segmentation mask leads directly to visible cleanup artifacts.
+
+When you choose a remote LLM provider, Koharu sends only the OCR text selected for translation to that provider. The page image never leaves your machine.
+
+## Local-first design
+
+By default, Koharu runs all vision models and LLMs locally. The remote provider path exists as an option, not a requirement. This means:
+
+- Vision model inference (detect, OCR, inpaint) always runs on your hardware
+- Local LLM inference runs on your hardware after you download the model once
+- Remote providers receive only the recognized text — never the page image or artwork
+
+<Tip>
+  Individual stages can be swapped in **Settings &gt; Engines** without changing the rest of the pipeline. You can run the default detector with an alternative inpainter, or switch OCR engines independently.
+</Tip>
+
+## Technology stack
+
+Koharu's pipeline is implemented in Rust across the full stack:
+
+- [candle](https://github.com/huggingface/candle) for vision model inference (detection, segmentation, OCR, inpainting)
+- [llama.cpp](https://github.com/ggml-org/llama.cpp) for local LLM inference via GGUF models
+- [Tauri](https://github.com/tauri-apps/tauri) for the desktop application shell
+
+The engine registry and pipeline execution live in `koharu-app/src/engine.rs`. Default engine selection lives in `koharu-app/src/config.rs`.
+
+## Further reading
+
+<CardGroup cols={2}>
+  <Card title="ML Models and LLM Providers" icon="microchip" href="/explanation/models-and-providers">
+    Full reference for every vision model, local LLM, and remote provider Koharu supports.
+  </Card>
+  <Card title="Technical Deep Dive" icon="code" href="/explanation/technical-deep-dive">
+    Architecture internals: candle inference, segmentation masks, AOT inpainting, and source tree layout.
+  </Card>
+  <Card title="GPU Acceleration and Runtime" icon="bolt" href="/explanation/acceleration-and-runtime">
+    CUDA, Metal, Vulkan, and ZLUDA backends. CPU fallback and platform coverage.
+  </Card>
+  <Card title="Text Rendering and Vertical CJK" icon="font" href="/explanation/text-rendering-and-vertical-cjk-layout">
+    How Koharu renders translated text inside speech bubbles with OpenType shaping and vertical layout.
+  </Card>
+</CardGroup>

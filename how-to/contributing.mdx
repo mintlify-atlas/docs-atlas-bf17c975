@@ -1,0 +1,153 @@
+---
+title: "Contribute to Koharu Development"
+description: "Set up a local development environment for Koharu, run the test suite, and submit pull requests. Covers Rust and TypeScript frontend contribution workflows."
+---
+
+Koharu accepts contributions across the Rust workspace, the Tauri app shell, the Next.js UI, the ML pipeline, MCP integrations, tests, and documentation. The repository is hosted at [github.com/mayocream/koharu](https://github.com/mayocream/koharu). This guide focuses on the repository workflow that matches CI and keeps changes easy to review.
+
+## Prerequisites
+
+You should have:
+
+- [Rust](https://www.rust-lang.org/tools/install) 1.92 or later
+- [Bun](https://bun.sh/) 1.0 or later
+
+On Windows, source builds also expect:
+
+- Visual Studio C++ build tools
+- the CUDA Toolkit for the normal CUDA-enabled local build path
+
+If you have not built Koharu locally before, read [Build Koharu from Source](/how-to/build-from-source) first.
+
+## Repository layout
+
+The main top-level areas are:
+
+| Directory | Contents |
+|-----------|----------|
+| `koharu/` | the Tauri desktop application shell |
+| `koharu-*` | Rust workspace crates for runtime, ML, pipeline, RPC, rendering, PSD export, and types |
+| `ui/` | the web UI used inside the desktop shell and headless mode |
+| `e2e/` | Playwright end-to-end tests and fixtures |
+| `docs/` | the documentation site content |
+
+If you are not sure where a change belongs:
+
+- UI interaction and panels usually live in `ui/`
+- backend APIs, MCP tools, and orchestration usually live in `koharu-rpc/` or `koharu-app/`
+- rendering, OCR, model runtime, and ML-specific logic live in the Rust workspace crates
+
+## Set up the repository
+
+<Steps>
+  <Step title="Install JavaScript dependencies">
+    ```bash
+    bun install
+    ```
+  </Step>
+  <Step title="Start the development build">
+    ```bash
+    bun run dev
+    ```
+
+    The dev command runs the Tauri app in development mode and keeps the local server on a fixed port for UI work and e2e tests.
+  </Step>
+</Steps>
+
+## Use the repo's preferred local commands
+
+For local Rust commands, prefer `bun cargo` instead of calling `cargo` directly:
+
+```bash
+bun cargo fmt -- --check
+bun cargo check
+bun cargo clippy -- -D warnings
+bun cargo test --workspace --tests
+```
+
+For UI formatting:
+
+```bash
+bun run format
+```
+
+For docs validation:
+
+```bash
+zensical build -f docs/zensical.toml -c
+zensical build -f docs/zensical.ja-JP.toml
+zensical build -f docs/zensical.zh-CN.toml
+```
+
+## Run the e2e tests
+
+Koharu includes Playwright tests under `e2e/`. The current Playwright setup starts Koharu in headless mode and waits for the local API to come up before running browser tests.
+
+```bash
+bun run test:e2e
+```
+
+Internally, the test runner launches Koharu through:
+
+```bash
+bun run dev -- --headless
+```
+
+## What to run before opening a PR
+
+Run the checks that match the area you changed. You do not need to run every command for every PR, but you should cover the code paths you touched.
+
+<AccordionGroup>
+  <Accordion title="Rust code changes">
+    ```bash
+    bun cargo fmt -- --check
+    bun cargo check
+    bun cargo clippy -- -D warnings
+    bun cargo test --workspace --tests
+    ```
+  </Accordion>
+  <Accordion title="Desktop app or full integration changes">
+    ```bash
+    bun run build
+    ```
+  </Accordion>
+  <Accordion title="UI or interaction flow changes">
+    ```bash
+    bun run format
+    bun run test:e2e
+    ```
+  </Accordion>
+  <Accordion title="Documentation changes">
+    ```bash
+    zensical build -f docs/zensical.toml -c
+    zensical build -f docs/zensical.ja-JP.toml
+    zensical build -f docs/zensical.zh-CN.toml
+    ```
+
+    Docs live under `docs/en-US/`, `docs/ja-JP/`, and `docs/zh-CN/`. When updating docs, keep instructions aligned with the current implementation, prefer concrete commands and real paths over generic advice, and update navigation in the appropriate `zensical.toml` if you add a new page.
+  </Accordion>
+</AccordionGroup>
+
+## Pull request expectations
+
+A good contribution usually has:
+
+- one clear goal
+- code that follows existing patterns instead of introducing a new style unnecessarily
+- tests or validation steps that match the change
+- a PR description that explains what changed and how you verified it
+
+Small, focused PRs are easier to review than large mixed changes.
+
+If your change affects user-visible behavior, mention what the old behavior was, what the new behavior is, and how you tested it.
+
+## AI-generated contributions
+
+AI-generated contributions are welcome, provided:
+
+1. A human has reviewed the code before opening the PR.
+2. The submitter understands the changes being made.
+
+<Note>
+  This rule already exists in the repository's GitHub contribution guidance and remains in effect.
+</Note>

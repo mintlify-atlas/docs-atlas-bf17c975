@@ -1,0 +1,133 @@
+---
+title: "Install Koharu on Windows, macOS, and Linux"
+description: "Download and install Koharu from GitHub Releases. Covers platform-specific install steps for Windows, macOS, and Linux with GPU driver requirements."
+---
+
+Koharu provides prebuilt binaries for Windows, macOS, and Linux. Download the latest release from [GitHub Releases](https://github.com/mayocream/koharu/releases/latest) and follow the steps for your platform below.
+
+Koharu is a local-first application. The desktop binary is only part of the install footprint. On first launch, Koharu also creates a per-user local data directory for runtime libraries, downloaded vision and OCR models, and any local translation models you select later.
+
+<Note>
+Koharu requires an NVIDIA GPU with compute capability 7.5 or higher for CUDA acceleration. To check your GPU's compute capability, see the [CUDA GPU Compute Capability](https://developer.nvidia.com/cuda-gpus) reference. CPU fallback is always available if your GPU is not supported or not present.
+</Note>
+
+<Tabs>
+
+<Tab title="Windows">
+## Download
+
+1. Go to [https://github.com/mayocream/koharu/releases/latest](https://github.com/mayocream/koharu/releases/latest).
+2. Download the Windows installer or archive from the release assets.
+3. Run the installer or extract the archive and launch `koharu.exe`.
+
+## GPU driver requirements
+
+Koharu supports CUDA on NVIDIA GPUs and experimental ZLUDA on AMD GPUs on Windows.
+
+**NVIDIA / CUDA:**
+
+- Keep your NVIDIA drivers up to date. You can update them through [NVIDIA App](https://www.nvidia.com/en-us/software/nvidia-app/).
+- Koharu checks for CUDA 13.1 support and falls back to CPU if the driver is too old.
+- Koharu bundles the CUDA runtime it needs. The required DLLs are extracted to the application data directory on first run — no manual CUDA Toolkit installation needed.
+
+**Vulkan:**
+
+- Koharu also supports Vulkan on Windows for OCR and local LLM inference. Detection and inpainting still require CUDA or ZLUDA, so Vulkan is useful but not a full replacement for CUDA on NVIDIA hardware. AMD and Intel GPUs can benefit from Vulkan for OCR and LLM inference.
+
+<Warning>
+ZLUDA support for AMD GPUs on Windows is experimental. ZLUDA is a CUDA compatibility layer, and not all CUDA workloads run correctly on AMD hardware. To use it, install the [AMD HIP SDK](https://www.amd.com/en/developer/resources/rocm-hub/hip-sdk.html).
+</Warning>
+
+## First-run notes
+
+On first launch, Koharu extracts its bundled CUDA DLLs to the application data directory. This is expected and only happens once per install or update.
+
+```text
+koharu.exe
+# or, to prefetch models without opening the GUI:
+koharu.exe --download
+```
+</Tab>
+
+<Tab title="macOS">
+## Download
+
+1. Go to [https://github.com/mayocream/koharu/releases/latest](https://github.com/mayocream/koharu/releases/latest).
+2. Download the macOS disk image or archive from the release assets.
+3. Open the disk image, drag Koharu to your **Applications** folder, and launch it.
+
+## GPU acceleration
+
+Koharu supports Metal on Apple Silicon Macs. No extra runtime setup is required beyond a normal app install — Metal is available automatically on supported hardware.
+
+## First-run notes
+
+On first launch, Koharu downloads the default vision and OCR models used by detection, segmentation, inpainting, and font estimation. Local translation LLMs are not downloaded until you select them in **Settings**.
+
+```bash
+# To prefetch models without opening the GUI:
+koharu --download
+```
+</Tab>
+
+<Tab title="Linux">
+## Download
+
+1. Go to [https://github.com/mayocream/koharu/releases/latest](https://github.com/mayocream/koharu/releases/latest).
+2. Download the Linux archive from the release assets.
+3. Extract the archive and run the `koharu` binary.
+
+```bash
+# Example: extract and run
+tar -xf koharu-linux-x86_64.tar.gz
+./koharu
+```
+
+## GPU driver requirements
+
+Koharu supports CUDA on NVIDIA GPUs and Vulkan on Linux.
+
+**NVIDIA / CUDA:**
+
+- Keep your NVIDIA drivers up to date.
+- Koharu checks for CUDA 13.1 support and falls back to CPU if the driver is too old.
+- If Koharu cannot verify that your NVIDIA driver supports CUDA 13.1, it falls back to CPU automatically.
+
+**Vulkan:**
+
+- Vulkan is supported on Linux for OCR and local LLM inference. Detection and inpainting benefit most from CUDA, so Vulkan is useful but not a full replacement for the CUDA path on NVIDIA hardware. AMD and Intel GPUs can still benefit from Vulkan for OCR and LLM workloads.
+
+## First-run notes
+
+On first launch, Koharu downloads the default vision and OCR models. Local translation LLMs are not downloaded until you select them in **Settings**.
+
+```bash
+# To prefetch models without opening the GUI:
+koharu --download
+
+# To force CPU inference:
+koharu --cpu
+```
+</Tab>
+
+</Tabs>
+
+## What gets installed locally
+
+Koharu keeps its own files under a `Koharu` app-data root and stores model weights separately from the application binary. The local data directory contains:
+
+- runtime libraries used by llama.cpp and GPU backends
+- downloaded vision and OCR models
+- optional local translation models you select later
+
+## After installation
+
+Once Koharu launches successfully, follow [Translate Your First Manga Page with Koharu](/tutorials/translate-your-first-page) to run a full translation workflow.
+
+Your next decisions will typically be:
+
+- desktop GUI vs headless mode
+- local translation model vs remote provider
+- rendered image export vs layered PSD export
+
+For issues with installation or first launch, see [Troubleshooting](/how-to/troubleshooting).

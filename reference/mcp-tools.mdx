@@ -1,0 +1,194 @@
+---
+title: "Koharu MCP Tools Reference"
+description: "All MCP tools exposed by Koharu's built-in MCP server at /mcp. Documents inspection, pipeline, LLM, text-block editing, and mask cleanup tools."
+---
+
+Koharu exposes an MCP server that AI agents can use to drive the full translation pipeline. The server is available at:
+
+```text
+http://127.0.0.1:<PORT>/mcp
+```
+
+<Note>
+  The MCP tools operate on the same runtime state as the GUI and the HTTP API. Loading a model through an MCP tool loads it for the GUI too, and vice versa. There is only one shared runtime instance.
+</Note>
+
+## General behavior
+
+- Image-based tools (`view_image`, `view_text_block`) return text content plus inline image content.
+- `open_documents` replaces the current document set rather than appending to it.
+- `process` starts the full pipeline but does not itself stream progress.
+- `llm_load` and `process` currently accept local-model-style parameters and do not expose every HTTP API field.
+- Document tools that accept an `index` parameter use the 0-based position in the loaded document list. Use `get_documents` to check how many documents are loaded.
+
+## Inspection tools
+
+These tools retrieve state without modifying anything.
+
+| Tool | What it does | Key parameters |
+|------|-------------|----------------|
+| `app_version` | Get the application version | none |
+| `device` | Get ML device and GPU-related info | none |
+| `get_documents` | Get the number of loaded documents | none |
+| `get_document` | Get one document's metadata and text blocks (no images) | `document_id` |
+| `get_document_id_for_index` | Resolve a numeric index to a document ID | `index` |
+| `list_font_families` | List available render fonts | none |
+| `llm_list` | List translation models (local and provider) | none |
+| `llm_ready` | Check whether an LLM is currently loaded | none |
+
+`get_document` returns name, dimensions, processing state, and all text block details including OCR text and translations.
+
+## Image and block preview tools
+
+These tools return inline images the agent can inspect.
+
+| Tool | What it does | Key parameters |
+|------|-------------|----------------|
+| `view_image` | Preview a whole document layer | `document_id`, `layer`, optional `max_size` |
+| `view_text_block` | Preview one cropped text block | `document_id`, `text_block_index`, optional `layer` |
+
+Valid layers for `view_image`:
+
+| Layer | Available after |
+|-------|----------------|
+| `original` | Import |
+| `segment` | Detection |
+| `inpainted` | Inpainting |
+| `rendered` | Rendering |
+
+Valid layers for `view_text_block`:
+
+| Layer | Available after |
+|-------|----------------|
+| `original` | Import |
+| `rendered` | Rendering |
+
+`view_image` defaults to `max_size` of 1024 pixels. `view_text_block` crops to a fixed 512-pixel maximum.
+
+## Document and export tools
+
+| Tool | What it does | Key parameters |
+|------|-------------|----------------|
+| `open_documents` | Load image files from disk and replace the current set | `paths` |
+| `export_document` | Write the rendered document to a file on disk | `document_id`, `output_path` |
+
+`open_documents` expects filesystem paths, not uploaded file blobs. It replaces all currently loaded documents.
+
+`export_document` exports the rendered image. PSD export is available through the [HTTP API](/reference/http-api) but does not currently have a dedicated MCP tool.
+
+## Pipeline tools
+
+| Tool | What it does | Key parameters |
+|------|-------------|----------------|
+| `detect` | Run text detection, segmentation, and font prediction | `document_id` |
+| `ocr` | Run OCR on detected text blocks | `document_id` |
+| `inpaint` | Remove text using the current mask | `document_id` |
+| `render` | Draw translated text back onto the page | `document_id`, optional `text_block_index`, `shader_effect`, `font_family` |
+| `process` | Start the full detect → OCR → inpaint → translate → render pipeline | optional `document_id`, `llm_target`, `language`, `system_prompt`, `shader_effect`, `font_family` |
+
+`process` is the coarse-grained convenience tool. Use the individual stage tools when you need finer control, easier debugging, or want to inspect results between stages.
+
+When `document_id` is omitted from `process`, all loaded documents are processed.
+
+## LLM tools
+
+| Tool | What it does | Key parameters |
+|------|-------------|----------------|
+| `llm_load` | Load a translation model | `target`, optional `options.temperature`, `options.max_tokens`, `options.custom_system_prompt` |
+| `llm_offload` | Unload the current model from memory | none |
+| `llm_generate` | Translate one block or all blocks using the loaded LLM | `document_id`, optional `text_block_index`, `language` |
+
+`llm_generate` requires a model to already be loaded via `llm_load`. Use `llm_ready` to check first.
+
+The `target` parameter for `llm_load`:
+- Local model: `{ "kind": "local", "modelId": "..." }`
+- Provider model: `{ "kind": "provider", "providerId": "openai", "modelId": "gpt-4o" }`
+
+## Text-block editing tools
+
+| Tool | What it does | Key parameters |
+|------|-------------|----------------|
+| `update_text_block` | Patch text, translation, box geometry, or style | `index`, `text_block_index`, optional fields |
+| `add_text_block` | Add a new empty text block at a position | `index`, `x`, `y`, `width`, `height` |
+| `remove_text_block` | Remove one text block | `index`, `text_block_index` |
+
+Fields that `update_text_block` can change:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `translation` | string | Translated text to render |
+| `x` | number | Horizontal position in pixels |
+| `y` | number | Vertical position in pixels |
+| `width` | number | Block width in pixels |
+| `height` | number | Block height in pixels |
+| `font_families` | string[] | Font family names for rendering |
+| `font_size` | number | Font size in points |
+| `color` | string | RGBA color value |
+| `shader_effect` | string | Shader effect identifier |
+
+Only the fields you provide are changed. Omitted fields retain their current values.
+
+## Mask and cleanup tools
+
+These tools are useful when the automatic segmentation mask is close but still needs manual adjustment.
+
+| Tool | What it does | Key parameters |
+|------|-------------|----------------|
+| `dilate_mask` | Expand the current text mask outward | `index`, `radius` |
+| `erode_mask` | Shrink the current text mask inward | `index`, `radius` |
+| `inpaint_region` | Re-inpaint a specific rectangular region only | `index`, `x`, `y`, `width`, `height` |
+
+After adjusting the mask with `dilate_mask` or `erode_mask`, run `inpaint` again to apply the updated mask to the image.
+
+## Suggested prompt flow
+
+For reliable agent behavior, this sequence works well:
+
+<Steps>
+  <Step title="Open documents">
+    `open_documents` — load image files from disk paths.
+  </Step>
+  <Step title="Verify load">
+    `get_documents` — confirm the expected number of documents are loaded.
+  </Step>
+  <Step title="Detect text blocks">
+    `detect` — find speech bubbles, text regions, and build the segmentation mask.
+  </Step>
+  <Step title="Run OCR">
+    `ocr` — extract the source text from each detected block.
+  </Step>
+  <Step title="Inspect results">
+    `get_document` — review OCR text and block positions before translating.
+  </Step>
+  <Step title="Load a translation model">
+    `llm_load` — load a local GGUF model or a configured provider model.
+  </Step>
+  <Step title="Generate translations">
+    `llm_generate` — translate all text blocks using the loaded model.
+  </Step>
+  <Step title="Inpaint">
+    `inpaint` — erase source text from the image using the segmentation mask.
+  </Step>
+  <Step title="Render">
+    `render` — draw translated text onto the cleaned page.
+  </Step>
+  <Step title="Review the result">
+    `view_image` with `layer=rendered` — inspect the final output as an inline image.
+  </Step>
+  <Step title="Export">
+    `export_document` — write the rendered image to a file path on disk.
+  </Step>
+</Steps>
+
+<Tip>
+  If a text block looks wrong, use `view_text_block` before asking the agent to patch layout or translation. The cropped preview helps identify whether the issue is in the OCR result, the translation, or the box geometry.
+</Tip>
+
+<CardGroup cols={2}>
+  <Card title="Configure MCP clients" icon="plug" href="/how-to/configure-mcp-clients">
+    Connect Claude Desktop, Cursor, or any MCP-compatible client to Koharu.
+  </Card>
+  <Card title="HTTP API reference" icon="code" href="/reference/http-api">
+    Use REST endpoints directly for scripting and automation.
+  </Card>
+</CardGroup>

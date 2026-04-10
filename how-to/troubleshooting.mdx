@@ -1,0 +1,268 @@
+---
+title: "Troubleshoot Common Koharu Issues"
+description: "Fix common Koharu problems including GPU detection failures, model download errors, OCR accuracy issues, and performance troubleshooting."
+---
+
+This page covers the most common Koharu problems: first-run downloads, runtime initialization, GPU fallback, headless and MCP access, pipeline-stage ordering, and source-build setup. When troubleshooting, first identify which layer is failing — application startup, runtime downloads, GPU acceleration, page pipeline stages, headless or MCP connectivity, or source build — as this usually narrows the problem quickly.
+
+<AccordionGroup>
+  <Accordion title="Koharu does not start cleanly on first launch">
+    Possible causes:
+
+    - runtime libraries have not finished downloading or extracting yet
+    - the first-run model downloads are still in progress
+    - the machine is missing local permissions for its app-data directory
+    - GPU initialization failed and the app is trying to fall back
+
+    Try these steps in order:
+
+    1. Wait longer on the very first launch, especially on slower disks or networks.
+    2. Start Koharu once with `--download` to prefetch runtime dependencies without opening the GUI.
+    3. Start once with `--cpu` to check whether the problem is GPU-related.
+    4. Start once with `--debug` to get console-oriented logs.
+
+    <Tabs>
+      <Tab title="macOS / Linux">
+        ```bash
+        koharu --download
+        koharu --cpu
+        koharu --debug
+        ```
+      </Tab>
+      <Tab title="Windows">
+        ```bash
+        koharu.exe --download
+        koharu.exe --cpu
+        koharu.exe --debug
+        ```
+      </Tab>
+    </Tabs>
+
+    If `--cpu` works and the normal launch does not, the problem is usually in the GPU path rather than general app startup.
+  </Accordion>
+
+  <Accordion title="Model or runtime downloads fail">
+    Koharu needs network access on first use for:
+
+    - llama.cpp runtime packages
+    - GPU runtime support files where applicable
+    - the default vision and OCR model stack
+    - optional local translation models when selected later
+
+    Likely causes:
+
+    - intermittent network failures
+    - blocked access to GitHub release assets or model hosting
+    - local filesystem permission issues in the app-data directory
+
+    What to check:
+
+    - whether GitHub and Hugging Face downloads are reachable from the machine
+    - whether retrying `--download` succeeds
+    - whether another process or security tool is locking files in the local runtime directory
+
+    If downloads keep failing, test on a different network first. That is the fastest way to separate a machine-local problem from an upstream reachability issue.
+  </Accordion>
+
+  <Accordion title="Koharu falls back to CPU even though you have an NVIDIA GPU">
+    This is expected when Koharu cannot confirm support for CUDA 13.1.
+
+    The current runtime behavior is:
+
+    1. detect an NVIDIA driver
+    2. query driver compatibility
+    3. continue on CUDA only when the driver reports CUDA 13.1 support
+    4. otherwise fall back to CPU
+
+    To resolve this:
+
+    1. Update the NVIDIA driver.
+    2. Restart Koharu after the update.
+    3. Verify behavior with `--debug`.
+
+    If the driver is old or the CUDA check fails, Koharu deliberately prefers CPU over a partially working CUDA configuration.
+  </Accordion>
+
+  <Accordion title="OCR, inpainting, or export says something is missing">
+    Some errors are simply pipeline ordering problems. Common examples:
+
+    - `No segment mask available. Run detect first.`
+    - `No rendered image found`
+    - `No inpainted image found`
+
+    These mean a required earlier stage has not produced its output yet. Use this order:
+
+    1. Detect
+    2. OCR
+    3. Inpaint
+    4. LLM Generate
+    5. Render
+    6. Export
+
+    If export fails because there is no rendered or inpainted layer, rerun the missing stage instead of retrying export repeatedly.
+  </Accordion>
+
+  <Accordion title="Detection or OCR quality is poor on a page">
+    Common causes:
+
+    - low-resolution source images
+    - unusual page crops
+    - heavy screentones or noisy scans
+    - vertical text mixed with difficult artwork
+    - badly placed or duplicated text blocks after detection
+
+    Try this:
+
+    1. Start from a cleaner page image if possible.
+    2. Inspect the detected text blocks before translating.
+    3. Fix obvious bad blocks before running the rest of the pipeline.
+    4. Rerun later stages after the structural fixes.
+
+    If the structure is wrong, translation quality usually gets worse downstream because OCR and rendering both depend on block geometry.
+  </Accordion>
+
+  <Accordion title="Headless mode starts, but you cannot open the Web UI">
+    Check the basics first:
+
+    - did you pass `--headless`?
+    - did you choose a fixed port?
+    - is the process still running?
+
+    ```bash
+    koharu --port 4000 --headless
+    ```
+
+    Then open `http://localhost:4000`.
+
+    <Note>
+      Koharu binds to `127.0.0.1`. The local Web UI is only available on the same machine unless you expose it yourself through your own networking setup.
+    </Note>
+
+    Also verify that another process is not already using the selected port.
+  </Accordion>
+
+  <Accordion title="The MCP client cannot connect">
+    Use a fixed port and point the client to:
+
+    ```text
+    http://localhost:9999/mcp
+    ```
+
+    Common mistakes:
+
+    - using the root URL instead of `/mcp`
+    - forgetting `--port`
+    - trying to connect after the Koharu process has already exited
+    - trying to reach the service from another machine without explicitly exposing the port
+
+    If normal headless Web UI access works but MCP does not, check the exact URL first. Wrong path selection is more common than server failure.
+
+    For client-specific setup, see [Configure MCP Clients](/how-to/configure-mcp-clients).
+  </Accordion>
+
+  <Accordion title="Import appears to do nothing">
+    The current documented import flow is image-based. Koharu accepts:
+
+    - `.png`
+    - `.jpg`
+    - `.jpeg`
+    - `.webp`
+
+    Folder import recursively filters files to those extensions only. If a folder import seems empty, check whether the folder actually contains supported image files instead of archives, PSDs, or other formats.
+  </Accordion>
+
+  <Accordion title="Export fails or gives you the wrong kind of output">
+    Use the output type that matches the current pipeline state:
+
+    - rendered export requires a rendered layer
+    - inpainted export requires an inpainted layer
+    - PSD export is the best choice when you still want editable text and helper layers
+
+    File naming to remember:
+
+    - rendered exports use a `_koharu` suffix
+    - inpainted exports use an `_inpainted` suffix
+    - PSD export uses `_koharu.psd`
+    - classic PSD export rejects images above `30000 x 30000`
+
+    If the page is extremely large, resize or split it before expecting PSD export to succeed.
+  </Accordion>
+
+  <Accordion title="API key or keyring issues">
+    By default, Koharu stores API keys in the system keyring. In container or CI environments where there is no persistent keyring, use `--no-keyring` and supply API keys through environment variables instead.
+
+    The variable name follows the pattern `KOHARU_<PROVIDER>_API_KEY`:
+
+    | Provider | Environment variable |
+    |----------|---------------------|
+    | OpenAI | `KOHARU_OPENAI_API_KEY` |
+    | Gemini | `KOHARU_GEMINI_API_KEY` |
+    | Claude | `KOHARU_CLAUDE_API_KEY` |
+    | DeepSeek | `KOHARU_DEEPSEEK_API_KEY` |
+    | OpenAI-compatible | `KOHARU_OPENAI_COMPATIBLE_API_KEY` |
+
+    Example:
+
+    ```bash
+    KOHARU_OPENAI_API_KEY=sk-... koharu --port 9999 --headless --no-keyring
+    ```
+
+    When `--no-keyring` is active, calls to save an API key through the UI or HTTP API are ignored.
+  </Accordion>
+
+  <Accordion title="Source build fails on Windows">
+    The Windows build helper expects:
+
+    - `nvcc` for the default CUDA build path
+    - `cl.exe` from Visual Studio C++ tools
+
+    The Bun wrapper script tries to discover both automatically, but if either one is missing the build can fail before Tauri finishes launching.
+
+    Use the project wrapper commands:
+
+    ```bash
+    bun install
+    bun run build
+    ```
+
+    If you want direct control over the Tauri command:
+
+    ```bash
+    bun tauri build --release --no-bundle
+    ```
+
+    For lower-level Rust builds:
+
+    ```bash
+    bun cargo build --release -p koharu --features=cuda
+    ```
+
+    If you only need to confirm that the app works at all, try a CPU-only runtime launch first instead of debugging the full CUDA toolchain immediately.
+  </Accordion>
+
+  <Accordion title="Source build fails because of the chosen feature path">
+    The desktop build is platform-aware:
+
+    - Windows and Linux use `cuda`
+    - macOS on Apple Silicon uses `metal`
+
+    If you manually invoke lower-level cargo commands with the wrong feature set for your platform, the build can fail or produce a mismatched binary. Follow the platform examples in [Build Koharu from Source](/how-to/build-from-source).
+  </Accordion>
+</AccordionGroup>
+
+## When to stop debugging locally
+
+You have probably isolated the issue enough to report it when:
+
+- `--cpu` works but GPU mode does not
+- `--download` consistently fails on a healthy network
+- the same page repeatedly triggers a reproducible pipeline failure
+- headless mode starts but a correct `localhost` URL still fails
+
+At that point, collect:
+
+- your OS and hardware
+- the exact command you ran
+- whether `--cpu` changes the result
+- the exact error message
+- whether the issue happens on one page or every page

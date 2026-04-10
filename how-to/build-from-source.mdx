@@ -1,0 +1,129 @@
+---
+title: "Build Koharu from Source Code"
+description: "Build the Koharu desktop app from source using Rust and Bun. Covers prerequisites, platform-specific setup, and common build troubleshooting."
+---
+
+If you want to compile Koharu locally instead of using a prebuilt release, start with the repository's Bun wrapper. It matches the project's build flow and handles platform-specific setup that a direct Tauri invocation does not. A full desktop build includes the Rust application, the embedded UI, and the local HTTP, RPC, and MCP server used by both GUI and headless modes.
+
+## Prerequisites
+
+- [Rust](https://www.rust-lang.org/tools/install) 1.92 or later
+- [Bun](https://bun.sh/) 1.0 or later
+- [LLVM](https://llvm.org/) 15 or later (for GPU acceleration builds)
+
+<Tabs>
+  <Tab title="Windows">
+    For Windows source builds, also install:
+    - Visual Studio C++ build tools
+    - [CUDA Toolkit](https://developer.nvidia.com/cuda-13-0-0-download-archive) 13.0 (for CUDA and ZLUDA support)
+    - [AMD HIP SDK](https://www.amd.com/en/developer/resources/rocm-hub/hip-sdk.html) (for ZLUDA support)
+
+    The repository's `scripts/dev.ts` helper tries to discover `nvcc` and `cl.exe` automatically on Windows before launching Tauri.
+  </Tab>
+  <Tab title="macOS">
+    No additional tooling is required beyond the Rust and Bun prerequisites. Metal is the default accelerated path on Apple Silicon and requires no extra runtime setup.
+  </Tab>
+  <Tab title="Linux">
+    For CUDA-enabled builds, install the CUDA Toolkit for your distribution. The default Linux build uses the `cuda` feature flag.
+  </Tab>
+</Tabs>
+
+## Platform build targets
+
+The default desktop build is platform-aware:
+
+| Platform | Feature flag |
+|----------|-------------|
+| Windows | `cuda` |
+| Linux | `cuda` |
+| macOS on Apple Silicon | `metal` |
+
+## Build steps
+
+<Steps>
+  <Step title="Install dependencies">
+    ```bash
+    bun install
+    ```
+  </Step>
+  <Step title="Build the desktop app">
+    ```bash
+    bun run build
+    ```
+
+    This is the standard source-build path. It runs the repository's Bun helper and then launches Tauri with the build flow the project expects. On Windows, the wrapper also tries to discover `nvcc` and `cl.exe` automatically before starting the build.
+
+    The main binaries are written to `target/release`:
+
+    ```text
+    target/release/koharu
+    target/release/koharu.exe  (Windows only)
+    ```
+  </Step>
+</Steps>
+
+## Development build
+
+If you are actively working on the app rather than producing a release-style binary, use the dev command instead. It launches `tauri dev` and starts the local server on a fixed port so the desktop shell and UI can talk to the same runtime during development.
+
+```bash
+bun run dev
+```
+
+## Advanced: direct Tauri control
+
+If you want to control the Tauri invocation directly instead of going through the wrapper:
+
+```bash
+bun tauri build --release --no-bundle
+```
+
+<Note>
+  Unlike `bun run build`, this path does not go through the repository's Windows helper that tries to configure CUDA and Visual Studio tooling for you first.
+</Note>
+
+## Advanced: direct Rust builds
+
+If you only want to build the Rust crate directly, use `bun cargo` rather than invoking `cargo` yourself:
+
+<Tabs>
+  <Tab title="Windows / Linux">
+    ```bash
+    bun cargo build --release -p koharu --features=cuda
+    ```
+  </Tab>
+  <Tab title="macOS Apple Silicon">
+    ```bash
+    bun cargo build --release -p koharu --features=metal
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  `bun run build` remains the better choice for a normal desktop build because it preserves the full Tauri packaging flow.
+</Note>
+
+## What happens at runtime after the build
+
+Building the app does not bundle every model weight. On first launch, Koharu still needs to:
+
+- initialize runtime libraries under the local app data directory
+- download the default vision and OCR models
+- download optional local translation LLMs later when you choose them in Settings
+
+To prefetch those dependencies without starting the app, run:
+
+<Tabs>
+  <Tab title="macOS / Linux">
+    ```bash
+    koharu --download
+    ```
+  </Tab>
+  <Tab title="Windows">
+    ```bash
+    koharu.exe --download
+    ```
+  </Tab>
+</Tabs>
+
+For more details on runtime modes, see [Run Koharu in GUI, Headless, and MCP Modes](/how-to/run-gui-headless-and-mcp).

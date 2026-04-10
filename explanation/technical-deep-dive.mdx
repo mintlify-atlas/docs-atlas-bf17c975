@@ -1,0 +1,163 @@
+---
+title: "Technical Deep Dive: Koharu Internals"
+description: "A detailed look at Koharu's architecture: candle inference, llama.cpp LLMs, Tauri shell, segmentation mask pipeline, AOT inpainting, and Rust-first design."
+---
+
+This page covers the internal structure of Koharu's manga pipeline: the technology stack, how each model category works at an implementation level, the segmentation mask pipeline, AOT inpainting, and where each piece lives in the source tree. Read [How Koharu's Pipeline Works](/explanation/how-koharu-works) first if you want the conceptual overview before the implementation details.
+
+## Technology stack
+
+Koharu is written entirely in Rust. The workspace is defined in `Cargo.toml` and contains these crates:
+
+| Crate | Role |
+|-------|------|
+| `koharu` | Binary entry point |
+| `koharu-app` | Pipeline orchestration, engine registry, config |
+| `koharu-ml` | Vision model inference (candle-based) |
+| `koharu-llm` | LLM inference wrapper (llama.cpp) |
+| `koharu-renderer` | Text layout, shaping, and rasterization |
+| `koharu-runtime` | Backend selection and GPU runtime |
+| `koharu-psd` | Layered PSD export |
+| `koharu-rpc` | HTTP API and MCP server |
+| `koharu-core` | Shared types and document model |
+
+Key external dependencies:
+
+- **`candle-core` / `candle-nn` / `candle-transformers`** — high-performance ML inference in Rust, forked at `mayocream/candle` on the `cuda-dynamic-loading` branch for dynamic CUDA DLL loading
+- **`llama.cpp`** — local LLM inference via GGUF models, accessed through the `koharu-llm` crate
+- **`tauri` 2.x** — desktop application shell
+- **`harfrust`** — HarfBuzz bindings for OpenType text shaping
+- **`icu`** — ICU4X for Unicode-aware line segmentation
+- **`tiny-skia`** and **`skrifa`** — glyph rasterization and outline rendering
+- **`axum`** — HTTP server for the REST API and MCP transport
+- **`rmcp`** — MCP server implementation
+
+## Engine registry and pipeline execution
+
+The engine registry and pipeline execution live in `koharu-app/src/engine.rs`. Default engine selection lives in `koharu-app/src/config.rs`.
+
+The public pipeline is `Detect → OCR → Inpaint → LLM Generate → Render`, but the Detect stage already performs three distinct jobs:
+
+1. Text and bubble detection — `comic-text-bubble-detector` via candle
+2. Text foreground segmentation — `comic-text-detector` segmentation path
+3. Font and color estimation — `YuzuMarker.FontDetection`
+
+Individual stages are registered as engine implementations. You can swap engines in **Settings > Engines** without changing the contract between stages. Each engine writes to a shared document model (`koharu-core` types), and the next stage reads from it.
+
+## Model types at a glance
+
+| Component | Default model | Model type | Job in Koharu |
+|-----------|--------------|-----------|---------------|
+| Text and bubble detection | [comic-text-bubble-detector](https://huggingface.co/ogkalu/comic-text-and-bubble-detector) | Object detector | Find text blocks and speech bubble regions |
+| Segmentation | [comic-text-detector](https://github.com/dmMaze/comic-text-detector) | Segmentation network | Produce a dense text mask for cleanup |
+| OCR | [PaddleOCR-VL-1.5](https://huggingface.co/PaddlePaddle/PaddleOCR-VL-1.5) | Vision-language model | Read cropped text regions into Unicode text |
+| Inpainting | [aot-inpainting](https://huggingface.co/mayocream/aot-inpainting) | Inpainting network | Fill masked regions after text removal |
+| Font hints | [YuzuMarker.FontDetection](https://huggingface.co/fffonion/yuzumarker-font-detection) | Classifier / regressor | Estimate font family, colors, and stroke hints |
+| Translation | Local GGUF via [llama.cpp](https://github.com/ggml-org/llama.cpp) or remote API | Decoder-only LLM | Translate OCR text |
+
+Optional alternatives: [PP-DocLayoutV3](https://huggingface.co/PaddlePaddle/PP-DocLayoutV3_safetensors) as an alternative detector, [speech-bubble-segmentation](https://huggingface.co/mayocream/speech-bubble-segmentation) as a dedicated bubble detector, and [lama-manga](https://huggingface.co/mayocream/lama-manga) as an alternative inpainter.
+
+## Segmentation mask pipeline
+
+A segmentation mask is an image-sized map where each pixel indicates whether it belongs to the text foreground class. This is fundamentally different from a bounding box:
+
+| Representation | What it encodes | Best used for |
+|---------------|----------------|---------------|
+| Bounding box | Coarse rectangular region | OCR crop selection, ordering, UI editing |
+| Polygon | Tighter geometric outline | Line-level geometry |
+| Segmentation mask | Per-pixel foreground probability | Inpainting and precise cleanup |
+
+Koharu's segmentation path in `koharu-ml`:
+
+1. `comic-text-detector` loads a YOLOv5-style backbone with a U-Net decoder for mask prediction
+2. The default page pipeline uses the segmentation-only path (not the full detection path) because text blocks already come from `comic-text-bubble-detector`
+3. The grayscale probability map is thresholded and dilated with lightweight post-processing
+4. The resulting binary mask becomes `doc.segment`
+5. `aot-inpainting` consumes `doc.segment` as its erase-and-fill mask
+
+The dilation step matters: raw segmentation probabilities are soft and noisy, so the binary mask is dilated to cover text edges and outlines rather than leaving halos behind.
+
+<Warning>
+  Inpainting consumes `doc.segment` directly. A bad segmentation mask produces visible cleanup artifacts in the inpainted page. If cleanup looks wrong, check whether the segmentation mask covers the full text area.
+</Warning>
+
+## AOT inpainting
+
+The default inpainter is the AOT model from [manga-image-translator](https://github.com/zyddnys/manga-image-translator), exposed in Koharu as `aot-inpainting`. It is a masked-image inpainting network built around gated convolutions and repeated context-mixing blocks with multiple dilation rates.
+
+Why multi-dilation convolutions matter for manga:
+
+- Text removal needs more than a rectangular crop fill
+- The model needs both local edge detail (the bubble boundary) and wider context (the background pattern)
+- Repeated multi-dilation blocks mix that context at multiple scales without changing the pipeline contract
+
+Koharu's candle port of AOT follows the upstream inference shape:
+
+```
+1. Resize large pages down to a configurable max side
+2. Pad working image to a multiple-of-8 shape
+3. Feed masked RGB image + binary text mask into the network
+4. Composite predicted pixels back into the original image size
+```
+
+`lama-manga` remains available as an alternative if you want LaMa's Fourier-based inpainting behavior, but it is no longer the default.
+
+## OCR as a vision-language model task
+
+PaddleOCR-VL is not a classic CTC-only recognizer. It is a compact vision-language model combining:
+
+- A NaViT-style dynamic-resolution visual encoder
+- The ERNIE-4.5-0.3B language model decoder
+
+Koharu's implementation in `koharu-ml`:
+
+1. Load `PaddleOCR-VL-1.5.gguf` and a separate multimodal projector
+2. Inject the image crop through the llama.cpp multimodal path
+3. Prompt with `OCR:`
+4. Greedily decode text for each crop
+
+OCR runs on cropped text-block images, not the full page. The crop boundaries come from the `TextBlock` records written by `comic-text-bubble-detector` during the Detect stage.
+
+## Local LLM inference
+
+Koharu's local translation path uses GGUF models through `llama.cpp`, accessed via `koharu-llm`. In practice these are quantized decoder-only transformers. The inference loop is standard modern LLM inference:
+
+1. Tokenize the OCR text
+2. Run masked self-attention over the growing token sequence
+3. Predict the next token until output is complete
+
+The practical trade-off:
+
+- Larger models generally translate better
+- Smaller quantized models use less VRAM and RAM
+- Remote providers trade local privacy for access to larger hosted models
+
+Koharu keeps all image understanding steps local even when you choose a remote text-generation provider. The remote side receives only the OCR text.
+
+## Implementation notes
+
+Some details that are easy to miss from high-level docs:
+
+- The default detect engine is `comic-text-bubble-detector`, not `PP-DocLayoutV3` (which is still available as an alternative)
+- `comic-text-detector-seg` loads the segmentation-only path of `comic-text-detector` for `doc.segment`
+- The segmentation mask is built from thresholding plus dilation, not an older block-aware refinement path
+- Font prediction output is normalized before rendering: near-black and near-white colors snap to cleaner values
+- candle is forked at `mayocream/candle` on the `cuda-dynamic-loading` branch to support dynamic CUDA DLL extraction at runtime
+- Text blocks are sorted into manga reading order after detection, before OCR
+
+## Further reading
+
+<CardGroup cols={2}>
+  <Card title="How Koharu's pipeline works" icon="diagram-project" href="/explanation/how-koharu-works">
+    Conceptual overview of the staged pipeline before the implementation details.
+  </Card>
+  <Card title="ML models and LLM providers" icon="microchip" href="/explanation/models-and-providers">
+    All vision models, local LLMs, and remote provider options with Hugging Face sources.
+  </Card>
+  <Card title="Text rendering and vertical CJK" icon="font" href="/explanation/text-rendering-and-vertical-cjk-layout">
+    Renderer internals: HarfBuzz shaping, ICU4X segmentation, vertical layout, and font fallback.
+  </Card>
+  <Card title="GPU acceleration and runtime" icon="bolt" href="/explanation/acceleration-and-runtime">
+    Backend selection: CUDA, Metal, Vulkan, ZLUDA, and CPU fallback.
+  </Card>
+</CardGroup>

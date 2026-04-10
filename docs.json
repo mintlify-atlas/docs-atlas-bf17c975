@@ -1,122 +1,76 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "Koharu",
+  "theme": "almond",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#ea5379",
+    "light": "#f88a9c",
+    "dark": "#141414"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "https://media.brand.dev/6946e2d8-1288-46d2-9fe5-637b0ff20083.png",
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/mayocream/koharu"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/mayocream/koharu"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
-              "quickstart",
-              "development"
+              "introduction",
+              "tutorials/translate-your-first-page",
+              "how-to/install-koharu"
             ]
           },
           {
-            "group": "Customization",
+            "group": "How-To Guides",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "how-to/run-gui-headless-and-mcp",
+              "how-to/export-and-manage-projects",
+              "how-to/configure-mcp-clients",
+              "how-to/use-openai-compatible-api",
+              "how-to/build-from-source",
+              "how-to/troubleshooting",
+              "how-to/contributing"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Concepts",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
-            ]
-          },
-          {
-            "group": "AI tools",
-            "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "explanation/how-koharu-works",
+              "explanation/models-and-providers",
+              "explanation/acceleration-and-runtime",
+              "explanation/text-rendering-and-vertical-cjk-layout",
+              "explanation/technical-deep-dive"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Reference",
             "pages": [
-              "api-reference/introduction"
-            ]
-          },
-          {
-            "group": "Endpoint examples",
-            "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "reference/cli",
+              "reference/settings",
+              "reference/keyboard-shortcuts",
+              "reference/http-api",
+              "reference/mcp-tools"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

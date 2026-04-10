@@ -1,0 +1,104 @@
+---
+title: "Koharu Settings Reference"
+description: "All configurable settings in Koharu: data path, HTTP timeouts, pipeline engine selection, LLM providers, API keys, and rendering options."
+---
+
+Koharu's settings are organized into five tabs: **Appearance**, **Engines**, **API Keys**, **Runtime**, and **About**. Most settings apply immediately; runtime settings require an app restart because the shared runtime client is built at startup.
+
+## Appearance
+
+The **Appearance** tab controls the visual presentation of the app:
+
+| Setting | Options | Notes |
+|---------|---------|-------|
+| Theme | `Light`, `Dark`, `System` | Applies immediately in the frontend |
+| UI language | From the bundled translation list | Applies immediately in the frontend |
+| Rendering font | Any available font family | Used when Koharu renders translated text onto the page |
+
+Theme, language, and rendering-font changes apply immediately and do not require a restart.
+
+## Engines
+
+The **Engines** tab selects the backend used for each pipeline stage. Changes are saved to the shared app config immediately when changed.
+
+| Stage | Setting name | Default engine |
+|-------|-------------|----------------|
+| Text detection | `Detector` | `comic-text-bubble-detector` |
+| Bubble detection | `Bubble Detector` | `comic-text-bubble-detector` |
+| Font detection | `Font Detector` | `yuzumarker-font-detection` |
+| Segmentation | `Segmenter` | `comic-text-detector-seg` |
+| Text recognition | `OCR` | `paddle-ocr-vl-1.5` |
+| Translation | `Translator` | `llm` |
+| Background cleanup | `Inpainter` | `aot-inpainting` |
+| Text rendering | `Renderer` | `koharu-renderer` |
+
+Engine IDs are stored in `config.toml` under the `[pipeline]` section.
+
+## API Keys
+
+The **API Keys** tab manages credentials for built-in LLM providers:
+
+| Provider | Requires | Notes |
+|----------|----------|-------|
+| `OpenAI` | API key | Standard OpenAI key |
+| `Gemini` | API key | Google Gemini key |
+| `Claude` | API key | Anthropic Claude key |
+| `DeepSeek` | API key | DeepSeek key |
+| `OpenAI Compatible` | API key + Base URL | Custom endpoint; models are discovered dynamically |
+
+<Note>
+  Provider API keys are stored through the system keyring, not as plain text in `config.toml`. The API response intentionally returns `[REDACTED]` instead of the raw key value. Clearing a key removes it from the keyring.
+</Note>
+
+For `OpenAI Compatible`, a custom **Base URL** is required. Koharu queries that endpoint to discover available models dynamically.
+
+Provider `base_url` values are stored in `config.toml` under the `[providers]` section. API keys are never written to the config file.
+
+## Runtime
+
+The **Runtime** tab groups settings that affect the shared local runtime. Changes here save the config and restart the desktop app.
+
+<Warning>
+  Applying any change in the **Runtime** tab saves the config and restarts the app. The runtime HTTP client is built once at startup, so changes require a full restart to take effect.
+</Warning>
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `Data Path` | System app data directory | Where Koharu stores runtime packages, downloaded models, page manifests, and image blobs |
+| `HTTP Connect Timeout` | `20` seconds | How long Koharu waits while establishing HTTP connections |
+| `HTTP Read Timeout` | `300` seconds | How long Koharu waits while reading HTTP responses |
+| `HTTP Max Retries` | `3` | Number of automatic retries for transient HTTP failures |
+
+The HTTP values control the shared runtime HTTP client used for both model downloads and provider-backed translation requests.
+
+## About
+
+The **About** tab shows:
+
+- The current app version
+- Whether a newer GitHub release exists (compares against `mayocream/koharu`)
+- The author link
+- The repository link
+
+The version check is only active in packaged app mode.
+
+## Persistence model
+
+Settings are split across three storage layers:
+
+| Layer | What is stored |
+|-------|---------------|
+| `config.toml` | `data` path, `http` timeouts, `pipeline` engine IDs, provider `base_url` |
+| System keyring | Provider API keys |
+| Frontend preferences | Theme, language, rendering font |
+
+Clearing frontend preferences does not clear saved provider API keys or runtime config. Each layer must be reset independently.
+
+<CardGroup cols={2}>
+  <Card title="HTTP API reference" icon="code" href="/reference/http-api">
+    Use `GET /config` and `PUT /config` to read and write runtime settings programmatically.
+  </Card>
+  <Card title="Models and providers" icon="robot" href="/explanation/models-and-providers">
+    Learn how local models and remote providers work in Koharu.
+  </Card>
+</CardGroup>

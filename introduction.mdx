@@ -1,6 +1,6 @@
 ---
-title: "Koharu Docs: Local-first manga translation"
-description: "Koharu translates manga locally using ML — OCR, inpainting, and LLM translation on Windows, macOS, and Linux with GPU acceleration and MCP automation."
+title: "Koharu: ML-powered manga translator in Rust"
+description: "Koharu is a local-first desktop app for manga translation. Handles OCR, inpainting, and LLM translation on Windows, macOS, and Linux — all on your machine."
 ---
 
 Koharu is a Rust desktop application that automates manga translation using a staged ML pipeline. It runs vision models and LLMs locally, keeping your pages and data on your machine while delivering a complete translation workflow: detect, recognize, inpaint, translate, render, and export.
@@ -78,3 +78,13 @@ Koharu provides prebuilt binaries for Windows, macOS (Apple Silicon and Intel), 
 <Note>
   CPU fallback is always available on all platforms when GPU acceleration is unavailable or not worth the setup cost.
 </Note>
+
+## Automation and integration
+
+Koharu exposes three ways to integrate with other tools:
+
+- **Local HTTP API** at `http://127.0.0.1:<PORT>/api/v1` — the same API the desktop UI uses
+- **MCP server** at `http://127.0.0.1:<PORT>/mcp` — for AI agent workflows
+- **Headless mode** with `--headless` — serves the Web UI and API without launching the desktop window
+
+See [Run GUI, Headless, and MCP Modes](/how-to/run-gui-headless-and-mcp) and the [HTTP API Reference](/reference/http-api) to get started.

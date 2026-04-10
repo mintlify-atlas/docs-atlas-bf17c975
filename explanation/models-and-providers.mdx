@@ -1,0 +1,130 @@
+---
+title: "ML Models and LLM Providers in Koharu"
+description: "Explore the computer vision models, OCR engines, inpainting networks, and LLM translation backends Koharu uses. Covers local GGUF models and cloud providers."
+---
+
+Koharu uses two distinct model categories: vision models that prepare the page (detect, segment, OCR, inpaint, analyze fonts) and language models that translate the recognized text. Vision models always run locally. Language models can run locally via GGUF or through a remote provider you configure. All required models are downloaded automatically on first use.
+
+## Vision models
+
+Koharu's vision stack covers four tasks. Each task uses a model type whose output shape fits what the next stage needs.
+
+| Model | Model type | Purpose |
+|-------|-----------|---------|
+| `comic-text-bubble-detector` | Object detector | Finds text blocks and speech bubble regions in one pass |
+| `comic-text-detector` | Segmentation network | Produces a per-pixel text mask for inpainting cleanup |
+| `PaddleOCR-VL-1.5` | Vision-language model | Reads cropped text regions into Unicode text |
+| `aot-inpainting` | Inpainting network | Reconstructs masked image regions after text removal |
+| `YuzuMarker.FontDetection` | Classifier / regressor | Estimates font family, colors, and stroke hints for rendering |
+
+Some models are used directly from upstream Hugging Face repositories. Rust-friendly `safetensors` conversions are hosted on [Hugging Face / mayocream](https://huggingface.co/mayocream) when Koharu needs a converted bundle.
+
+### Default vision model sources
+
+- [comic-text-bubble-detector](https://huggingface.co/ogkalu/comic-text-and-bubble-detector)
+- [comic-text-detector](https://huggingface.co/mayocream/comic-text-detector)
+- [PaddleOCR-VL-1.5](https://huggingface.co/PaddlePaddle/PaddleOCR-VL-1.5)
+- [aot-inpainting](https://huggingface.co/mayocream/aot-inpainting)
+- [YuzuMarker.FontDetection](https://huggingface.co/fffonion/yuzumarker-font-detection)
+
+### Optional alternative vision engines
+
+You can swap individual stages in **Settings > Engines**. Available alternatives include:
+
+- [PP-DocLayoutV3](https://huggingface.co/PaddlePaddle/PP-DocLayoutV3_safetensors) — alternative detector and document layout analysis engine
+- [speech-bubble-segmentation](https://huggingface.co/mayocream/speech-bubble-segmentation) — dedicated speech bubble detector
+- [Manga OCR](https://huggingface.co/mayocream/manga-ocr) and [MIT 48px OCR](https://huggingface.co/mayocream/mit48px-ocr) — alternative OCR engines
+- [lama-manga](https://huggingface.co/mayocream/lama-manga) — alternative inpainter using LaMa's Fourier-based approach
+
+## Local LLMs
+
+Koharu supports local GGUF models through [llama.cpp](https://github.com/ggml-org/llama.cpp). These models run entirely on your machine and are downloaded on demand when you select them in the LLM picker.
+
+<AccordionGroup>
+  <Accordion title="Translation-focused models for English output">
+    These models are fine-tuned or selected for Japanese-to-English translation quality:
+
+    | Model | Size | Notes |
+    |-------|------|-------|
+    | [vntl-llama3-8b-v2](https://huggingface.co/lmg-anon/vntl-llama3-8b-v2-gguf) | ~8.5 GB (Q8_0) | Best when translation quality matters most |
+    | [lfm2.5-1.2b-instruct](https://huggingface.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF) | Small | Multilingual instruct model for low-memory systems |
+    | [sugoi-14b-ultra](https://huggingface.co/sugoitoolkit/Sugoi-14B-Ultra-GGUF) | 14B | Translation-oriented, more headroom than 8B class |
+    | [sugoi-32b-ultra](https://huggingface.co/sugoitoolkit/Sugoi-32B-Ultra-GGUF) | 32B | Largest Sugoi option for high-VRAM systems |
+  </Accordion>
+
+  <Accordion title="Translation-focused models for Chinese output">
+    These models are designed or fine-tuned for Japanese-to-Chinese translation:
+
+    | Model | Size | Notes |
+    |-------|------|-------|
+    | [sakura-galtransl-7b-v3.7](https://huggingface.co/SakuraLLM/Sakura-GalTransl-7B-v3.7) | ~6.3 GB | Balanced quality and speed on 8 GB GPUs |
+    | [sakura-1.5b-qwen2.5-v1.0](https://huggingface.co/shing3232/Sakura-1.5B-Qwen2.5-v1.0-GGUF-IMX) | 1.5B | Lighter option for mid-range or CPU-heavy setups |
+  </Accordion>
+
+  <Accordion title="Translation-focused model for broader language coverage">
+    | Model | Size | Notes |
+    |-------|------|-------|
+    | [hunyuan-mt-7b](https://huggingface.co/Mungert/Hunyuan-MT-7B-GGUF) | ~6.3 GB | Multi-language coverage with moderate hardware requirements |
+  </Accordion>
+
+  <Accordion title="General-purpose instruct models (Gemma 4)">
+    These are broad instruct models that are not translation-specific but work for many translation tasks:
+
+    - `gemma4-e2b-it`, `gemma4-e4b-it`, `gemma4-26b-a4b-it`, `gemma4-31b-it`
+    - Uncensored variants: `gemma4-e2b-uncensored`, `gemma4-e4b-uncensored`
+  </Accordion>
+
+  <Accordion title="General-purpose instruct models (Qwen 3.5)">
+    A wide size range covering sub-1B through 35B:
+
+    - `qwen3.5-0.8b`, `qwen3.5-2b`, `qwen3.5-4b`, `qwen3.5-9b`, `qwen3.5-27b`, `qwen3.5-35b-a3b`
+    - Uncensored variants: `qwen3.5-2b-uncensored`, `qwen3.5-4b-uncensored`, `qwen3.5-9b-uncensored`, `qwen3.5-27b-uncensored`, `qwen3.5-35b-a3b-uncensored`
+  </Accordion>
+</AccordionGroup>
+
+<Tip>
+  LLMs are downloaded on demand when you activate a model. For memory-constrained systems, start with a smaller model. When VRAM or RAM permits, 7B and 8B class models generally provide better translation quality.
+</Tip>
+
+## Remote providers
+
+Koharu can translate through remote or self-hosted APIs when you want to avoid local model downloads or reduce hardware requirements.
+
+| Provider | Built-in default model |
+|----------|----------------------|
+| OpenAI | `gpt-5-mini` |
+| Gemini | `gemini-3.1-flash-lite-preview` |
+| Claude | `claude-haiku-4-5` |
+| DeepSeek | `deepseek-chat` (DeepSeek-V3.2-Chat) |
+| OpenAI-compatible APIs | Discovered dynamically from configured endpoint |
+
+OpenAI-compatible APIs include LM Studio, OpenRouter, and any endpoint that exposes `/v1/models` and `/v1/chat/completions`.
+
+Remote providers are configured in **Settings > API Keys**. API keys are stored in your system keychain, not in plain text config files.
+
+<Note>
+  When you use a remote provider, Koharu sends only the OCR text selected for translation to that provider. The page image and artwork never leave your machine.
+</Note>
+
+## Choosing between local and remote
+
+| | Local models | Remote providers |
+|-|-------------|-----------------|
+| Privacy | All processing on your machine | OCR text sent to provider |
+| Download required | Yes, on first use | No |
+| Offline after setup | Yes | No |
+| VRAM / RAM usage | Model-dependent | Minimal |
+| Model size ceiling | Your hardware | Provider's hosted model |
+
+Use local models when privacy, offline operation, or hardware control matter most. Use remote providers when you want to avoid large downloads or need access to larger hosted models without local VRAM.
+
+## Further reading
+
+<CardGroup cols={2}>
+  <Card title="How Koharu's pipeline works" icon="diagram-project" href="/explanation/how-koharu-works">
+    Understand how vision models and LLMs fit into the staged translation pipeline.
+  </Card>
+  <Card title="Technical deep dive" icon="code" href="/explanation/technical-deep-dive">
+    Model architecture details: segmentation networks, AOT inpainting, OCR as a VLM task.
+  </Card>
+</CardGroup>

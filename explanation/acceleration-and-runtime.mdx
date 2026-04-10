@@ -1,0 +1,100 @@
+---
+title: "GPU Acceleration and Runtime Backends"
+description: "Configure CUDA, Metal, Vulkan, and ZLUDA acceleration in Koharu. Understand which backends support which pipeline stages and how CPU fallback works."
+---
+
+Koharu supports multiple GPU runtime backends so the same translation pipeline can run across a wide range of hardware — from NVIDIA workstations on Windows to Apple Silicon Macs and AMD or Intel GPUs on Windows and Linux. CPU fallback is always available when GPU acceleration is unavailable or not worth the setup cost.
+
+## Platform and backend overview
+
+| Platform | CUDA | Metal | Vulkan | ZLUDA |
+|----------|------|-------|--------|-------|
+| Windows (NVIDIA) | Full pipeline | — | OCR + LLM | — |
+| Windows (AMD) | — | — | OCR + LLM | Experimental (full pipeline) |
+| Windows (Intel) | — | — | OCR + LLM | — |
+| macOS (Apple Silicon) | — | Full pipeline | — | — |
+| Linux (NVIDIA) | Full pipeline | — | OCR + LLM | — |
+| Linux (AMD/Intel) | — | — | OCR + LLM | — |
+
+<Note>
+  Detection and inpainting require CUDA, Metal, or ZLUDA. Vulkan covers OCR and LLM inference but does not support the detection and inpainting stages.
+</Note>
+
+## CUDA on NVIDIA GPUs
+
+CUDA is the primary GPU backend for NVIDIA hardware on Windows and Linux.
+
+**Supported GPUs:** NVIDIA GPUs with compute capability 7.5 or higher. For a full compatibility list, see [CUDA GPU Compute Capability](https://developer.nvidia.com/cuda-gpus).
+
+**Bundled toolkit:** Koharu bundles CUDA Toolkit 13.1. The required DLLs are extracted into the application data directory on first run — you do not need to install the CUDA Toolkit separately.
+
+**Driver requirement:** CUDA acceleration depends on a recent NVIDIA driver. If the installed driver does not support CUDA 13.1, Koharu falls back to CPU automatically.
+
+<Warning>
+  Make sure you have current NVIDIA drivers installed before running Koharu for the first time. Outdated drivers will silently fall back to CPU and significantly slow down the pipeline.
+</Warning>
+
+## Metal on Apple Silicon
+
+On macOS, Koharu supports Metal acceleration on Apple Silicon systems such as the M1, M2, and M3 families. No extra runtime setup is required beyond a normal application install.
+
+Metal covers the full pipeline on Apple Silicon, including detection and inpainting stages that require more than Vulkan provides.
+
+## Vulkan on Windows and Linux
+
+Vulkan is available as a GPU path for OCR and local LLM inference on Windows and Linux when CUDA or Metal are not available. AMD and Intel GPUs can benefit from Vulkan for these stages.
+
+Detection and inpainting still depend on CUDA, Metal, or ZLUDA. On a system with only an AMD or Intel GPU and no ZLUDA setup, detection and inpainting fall back to CPU while OCR and LLM inference can still use the Vulkan-accelerated path.
+
+## ZLUDA on AMD GPUs (experimental)
+
+Koharu supports experimental ZLUDA acceleration on Windows for AMD GPUs. ZLUDA is a CUDA compatibility layer that allows some CUDA workloads to run on AMD hardware.
+
+To use ZLUDA, install the [AMD HIP SDK](https://www.amd.com/en/developer/resources/rocm-hub/hip-sdk.html) before launching Koharu.
+
+<Warning>
+  ZLUDA support is experimental. Behavior may differ from native CUDA, and not all workloads are guaranteed to run correctly. Test results on your specific hardware before relying on it for production use.
+</Warning>
+
+## CPU fallback
+
+Koharu can always run on CPU when no supported GPU is available, or when you want to force CPU mode explicitly.
+
+```bash
+# macOS / Linux
+koharu --cpu
+
+# Windows
+koharu.exe --cpu
+```
+
+CPU fallback makes Koharu usable on any machine, but the performance trade-off is significant:
+
+- GPU inference is much faster for all pipeline stages when a supported backend is available
+- CPU mode is fully compatible but can be substantially slower, especially for detection and inpainting
+- Smaller local LLMs (1B–4B class) are often the best choice on CPU-only systems
+
+<Tip>
+  On a CPU-only system, consider using a remote provider for translation instead of a large local LLM. Vision model inference (detect, OCR, inpaint) will still run locally on CPU.
+</Tip>
+
+## Which backends cover which stages
+
+| Pipeline stage | CUDA | Metal | Vulkan | ZLUDA | CPU |
+|---------------|------|-------|--------|-------|-----|
+| Detect | ✓ | ✓ | — | ✓ (experimental) | ✓ |
+| OCR | ✓ | ✓ | ✓ | ✓ (experimental) | ✓ |
+| Inpaint | ✓ | ✓ | — | ✓ (experimental) | ✓ |
+| LLM Generate | ✓ | ✓ | ✓ | ✓ (experimental) | ✓ |
+| Render | CPU / GPU compositing | CPU / GPU compositing | CPU / GPU compositing | CPU / GPU compositing | ✓ |
+
+## Further reading
+
+<CardGroup cols={2}>
+  <Card title="ML models and LLM providers" icon="microchip" href="/explanation/models-and-providers">
+    Model selection guidance for constrained memory environments and different hardware tiers.
+  </Card>
+  <Card title="How Koharu's pipeline works" icon="diagram-project" href="/explanation/how-koharu-works">
+    Understand the stages that each backend accelerates.
+  </Card>
+</CardGroup>

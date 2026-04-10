@@ -1,0 +1,125 @@
+---
+title: "Translate Your First Manga Page with Koharu"
+description: "Walk through Koharu's full translation workflow — import a page, detect text, run OCR, translate with a local or remote LLM, and export the result."
+---
+
+This tutorial walks through the standard Koharu workflow for a single manga page: import, detect, recognize, translate, review, and export. By the end you will have a translated page ready to use as a rendered image or a layered PSD file.
+
+Before you begin, make sure you have:
+
+- Koharu installed from the latest GitHub release (see [Install Koharu](/how-to/install-koharu))
+- A clean page image in `.png`, `.jpg`, `.jpeg`, or `.webp`
+- Enough local VRAM or RAM for your preferred model, or a remote provider configured
+
+<Steps>
+
+<Step title="Launch Koharu">
+Open the desktop application normally.
+
+<Note>
+On first run, Koharu may spend time initializing local runtime packages and downloading the default vision stack — including detection, segmentation, OCR, inpainting, and font estimation models. This is expected and usually only happens once per machine or runtime update. If you want to prefetch everything before opening the GUI, run Koharu once with `--download` and it will initialize the runtime and exit without launching the window.
+</Note>
+</Step>
+
+<Step title="Import a page">
+Load your page image into the app.
+
+The import flow is image-based. If you import a folder instead of a single file, Koharu recursively filters it down to supported image files (`.png`, `.jpg`, `.jpeg`, `.webp`).
+
+For a first pass, use one clean page so it is easy to judge:
+
+- text detection quality
+- OCR quality
+- translation quality
+- final bubble fit
+</Step>
+
+<Step title="Detect text and run OCR">
+Use Koharu's built-in vision pipeline to process the page. The pipeline:
+
+- detects text-like layout regions and speech bubbles
+- builds a segmentation mask for cleanup and inpainting
+- estimates font and color hints
+- recognizes the source text with OCR
+
+Koharu does not run OCR on the full page at once. It first creates text blocks, crops those regions, and then runs OCR on each cropped area for better accuracy.
+
+<Tip>
+Review the page carefully before you translate. Look for missed bubbles or captions, duplicate or badly placed text blocks, obvious OCR errors, and vertical text that should stay vertical. Fixing structural issues before translation usually saves time later.
+</Tip>
+</Step>
+
+<Step title="Choose a translation backend">
+Pick either a local GGUF model or a remote provider:
+
+**Local models** run through llama.cpp and keep everything on your machine. They are better when privacy and offline use matter most.
+
+**Remote providers** avoid local model downloads and reduce VRAM or RAM requirements. When you use a remote provider, Koharu sends OCR text for translation rather than the whole page image.
+
+Koharu supports the following remote providers out of the box:
+
+- OpenAI (`gpt-5-mini`)
+- Gemini (`gemini-3.1-flash-lite-preview`)
+- Claude (`claude-haiku-4-5`)
+- DeepSeek (`deepseek-chat`)
+- Any OpenAI-compatible endpoint such as LM Studio or OpenRouter
+
+To wire up LM Studio, OpenRouter, or another OpenAI-style endpoint, see [Use OpenAI-Compatible APIs](/how-to/use-openai-compatible-api).
+
+For local models, Koharu includes general-purpose instruct models (Gemma 4, Qwen 3.5) and fine-tuned translation models (Sugoi, Sakura, Hunyuan MT). LLMs are downloaded on demand when you activate a model in Settings.
+</Step>
+
+<Step title="Translate and review">
+Run translation on the page, then inspect the result carefully.
+
+Koharu handles text layout and vertical CJK rendering, but the final page still benefits from manual review. Focus on:
+
+- names and terminology
+- tone and character voice
+- line breaks and bubble fit
+- font choice and stroke readability (Koharu auto-picks a black or white outline for contrast, but you can override it manually)
+- blocks whose source OCR looked uncertain
+
+If a translation reads correctly but still looks cramped, adjust the text block or styling before exporting.
+</Step>
+
+<Step title="Export the result">
+When the page looks right, export it in the format that matches your next step:
+
+| Format | Best for |
+|--------|----------|
+| Rendered image | Flattened final page, ready to publish |
+| PSD | Editable text layers, helper layers, downstream cleanup in Photoshop |
+
+PSD export is better when you still want to make small wording edits, repaint artifacts, hide or inspect helper layers, or finish the page with manual lettering cleanup.
+</Step>
+
+</Steps>
+
+## If the first result is not good enough
+
+The usual fixes are:
+
+- rerun detection after adjusting page selection or replacing bad blocks
+- correct OCR or translation text manually
+- switch to a stronger translation model
+- export PSD and finish the page with manual lettering cleanup
+
+Koharu works best when you treat the pipeline as a fast first pass and then apply manual review where the page needs it.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Export and manage projects" icon="file-export" href="/how-to/export-and-manage-projects">
+    Learn about rendered image and PSD export options, file naming, and layer structure.
+  </Card>
+  <Card title="Models and providers" icon="brain" href="/explanation/models-and-providers">
+    Compare local GGUF models and remote cloud providers to find the right fit for your setup.
+  </Card>
+  <Card title="Acceleration and runtime" icon="bolt" href="/explanation/acceleration-and-runtime">
+    Understand CUDA, Metal, Vulkan, and CPU fallback to get the best performance from your hardware.
+  </Card>
+  <Card title="HTTP API reference" icon="code" href="/reference/http-api">
+    Automate translation workflows with Koharu's local HTTP API.
+  </Card>
+</CardGroup>
